@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">DT160 TLogger</string>
+    <string name="app_name">NFC TempSense</string>
 
     <string name="text_lab1">Measurement</string>
     <string name="text_lab2">Logging</string>

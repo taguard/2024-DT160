@@ -3,7 +3,7 @@ apply plugin: 'com.android.application'
 android {
     compileSdkVersion parent.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.fmsh.DT160"
+        applicationId "in.taguard.DT160"
         minSdkVersion parent.ext.minSdkVersion
         targetSdkVersion parent.ext.targetSdkVersion
         versionCode parent.ext.versionCode

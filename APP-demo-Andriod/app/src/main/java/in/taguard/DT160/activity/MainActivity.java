@@ -1,0 +1,271 @@
+package in.taguard.DT160.activity;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.nfc.NfcAdapter;
+import android.nfc.NfcManager;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.support.annotation.Nullable;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentTransaction;
+import android.view.View;
+import android.widget.CheckBox;
+import android.widget.FrameLayout;
+
+import in.taguard.DT160.R;
+import in.taguard.DT160.fragment.BaseFragment;
+import in.taguard.DT160.fragment.IMFragment;
+import in.taguard.DT160.fragment.SettingFragment;
+import in.taguard.DT160.tools.BroadcastManager;
+import in.taguard.DT160.util.ActivityUtils;
+import in.taguard.DT160.util.ExcelUtils;
+import in.taguard.DT160.util.LogUtil;
+import in.taguard.DT160.util.TimeUitls;
+import in.taguard.DT160.util.UIUtils;
+import com.qmuiteam.qmui.widget.QMUITopBarLayout;
+import com.qmuiteam.qmui.widget.dialog.QMUIDialog;
+import com.qmuiteam.qmui.widget.dialog.QMUIDialogAction;
+
+import butterknife.BindView;
+import butterknife.OnClick;
+
+public class MainActivity extends BaseActivity {
+
+    @BindView(R.id.topbar)
+    QMUITopBarLayout topbar;
+    @BindView(R.id.fl_fragment)
+    FrameLayout flFragment;
+    @BindView(R.id.cb_lab1)
+    CheckBox cbLab1;
+    @BindView(R.id.cb_lab2)
+    CheckBox cbLab2;
+    public IMFragment mImFragment;
+    private SettingFragment mSettingFragment;
+    /**
+     * 0 为即使测温页面,1 为RTC 测温页面
+     */
+    public int FLAG = 0 ;
+    private QMUIDialog mQmuiDialog;
+
+    @Override
+    protected int getLayoutId() {
+        return R.layout.activity_main;
+    }
+
+    @Override
+    protected void initData() {
+       if (!hasNfc(this)){
+           startAppSettings();
+       }
+
+        TimeUitls.getTimeZone();
+
+    }
+
+    @Override
+    protected void initView() {
+        String version = "1.0.0";
+        try {
+            PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+            version = packageInfo.versionName;
+
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+
+
+        }
+//
+        topbar.setTitle(UIUtils.getString(R.string.text_lab1));
+        topbar.addLeftTextButton(UIUtils.getString(R.string.text_version)+version,0x124);
+
+        topbar.addRightImageButton(R.mipmap.more,0x111).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mImFragment != null) {
+                    mImFragment.showBottomSheet();
+                }
+            }
+        });
+
+        if (mImFragment == null) {
+            mImFragment = new IMFragment();
+        }
+        if (!mImFragment.isAdded()) {
+            FragmentTransaction fragmentTransaction = getSupportFragmentManager().beginTransaction();
+            fragmentTransaction.add(R.id.fl_fragment, mImFragment).commit();
+        }
+
+    }
+
+    public void switchFragment(Fragment fromFragment, BaseFragment nextFragment) {
+        if (nextFragment != null) {
+            FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
+            //判断nextFragment是否添加
+            if (!nextFragment.isAdded()) {
+                //隐藏当前Fragment
+                if (fromFragment != null) {
+                    transaction.hide(fromFragment);
+                }
+                transaction.add(R.id.fl_fragment, nextFragment).commit();
+            } else {
+                //隐藏当前Fragment
+                if (fromFragment != null) {
+                    transaction.hide(fromFragment);
+                }
+                transaction.show(nextFragment).commit();
+            }
+        }
+    }
+
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+    }
+
+
+
+    @OnClick({R.id.cb_lab1, R.id.cb_lab2})
+    public void onViewClicked(View view) {
+        switch (view.getId()) {
+            case R.id.cb_lab1:
+                if (mImFragment == null) {
+                    mImFragment = new IMFragment();
+                }
+                FLAG = 0;
+                mImFragment.mStatu = 0;
+                topbar.setTitle(UIUtils.getString(R.string.text_lab1));
+                switchFragment(mSettingFragment, mImFragment);
+                cbLab1.setChecked(true);
+                cbLab2.setChecked(false);
+                topbar.addRightImageButton(R.mipmap.more,0x111).setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (mImFragment != null) {
+                            mImFragment.showBottomSheet();
+                        }
+                    }
+                });
+                break;
+            case R.id.cb_lab2:
+                if (mSettingFragment == null) {
+
+                    mSettingFragment = new SettingFragment();
+                }
+                FLAG = 1;
+                topbar.setTitle(UIUtils.getString(R.string.text_lab2));
+                switchFragment(mImFragment, mSettingFragment);
+                cbLab1.setChecked(false);
+                cbLab2.setChecked(true);
+                topbar.removeAllRightViews();
+                break;
+            default:
+                break;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        LogUtil.d("destory");
+        BroadcastManager.getInstance(mContext).destroy("instruct");
+    }
+
+
+    public void nfcDialog(){
+        if(mQmuiDialog != null){
+            mQmuiDialog.dismiss();
+            mQmuiDialog =null;
+        }
+        mQmuiDialog = new QMUIDialog.CustomDialogBuilder(ActivityUtils.instance.getCurrentActivity())
+                .setLayout(R.layout.dialog_nfc_hint).addAction(UIUtils.getString(R.string.text_cancel), new QMUIDialogAction.ActionListener() {
+                    @Override
+                    public void onClick(QMUIDialog dialog, int index) {
+                        dialog.dismiss();
+                    }
+                }).create(R.style.DialogTheme2);
+
+        mQmuiDialog.show();
+        mQmuiDialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog) {
+                if(mImFragment.mStatu == 7 || mImFragment.mStatu == 8 || mImFragment.mStatu == 9){
+                    FLAG = 1;
+                    //防止在定时测温界面响应即使测温结果
+                }
+                mImFragment.mStatu = 0;
+
+            }
+        });
+    }
+    public void disNFCDialog(){
+        if(mQmuiDialog != null){
+
+            mQmuiDialog.dismiss();
+        }
+    }
+
+    public  boolean hasNfc(Activity context){
+
+        NfcManager manager = (NfcManager) context.getSystemService(Context.NFC_SERVICE);
+        NfcAdapter adapter = manager.getDefaultAdapter();
+        if (adapter != null && adapter.isEnabled()) {
+            // adapter存在，能启用
+            return true;
+        }
+        return false;
+
+    }
+
+    /**
+     * 启动应用的设置
+     */
+    private void startAppSettings() {
+        try {
+            Intent intent = new Intent(
+                    Settings.ACTION_NFC_SETTINGS);
+            startActivityForResult(intent, 100);
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        LogUtil.d(requestCode+ "---"+resultCode);
+        if(requestCode == 100){
+            if(!hasNfc(this)){
+                showDialog();
+            }
+        }
+    }
+
+    private void showDialog(){
+        QMUIDialog qmuiDialog = new QMUIDialog.MessageDialogBuilder(mContext)
+                .setTitle(UIUtils.getString(R.string.tips))
+                .setMessage(UIUtils.getString(R.string.open_nfc))
+                .addAction(UIUtils.getString(R.string.text_cancel), new QMUIDialogAction.ActionListener() {
+                    @Override
+                    public void onClick(QMUIDialog dialog, int index) {
+                        dialog.dismiss();
+                        finish();
+                    }
+                }).addAction(UIUtils.getString(R.string.setting), new QMUIDialogAction.ActionListener() {
+                    @Override
+                    public void onClick(QMUIDialog dialog, int index) {
+                        dialog.dismiss();
+                        startAppSettings();
+
+                    }
+                }).create();
+        qmuiDialog.show();
+    }
+
+}
